@@ -33,7 +33,7 @@ def bgr_to_hex(bgr_color):
     return f"#{bgr_color[2]:02x}{bgr_color[1]:02x}{bgr_color[0]:02x}"
 
 # --- 音频特征提取 ---
-def extract_audio_features(y, sr, n_bands=64, hop_length=512):
+def extract_audio_features(y, sr, n_bands=64, hop_length=512, sensitivity=1.5):
     """
     提取音频的频谱特征，用于驱动能量条
     
@@ -42,6 +42,7 @@ def extract_audio_features(y, sr, n_bands=64, hop_length=512):
     - sr: 采样率
     - n_bands: 频率段数量（能量条数量）
     - hop_length: 跳跃长度，影响时间分辨率
+    - sensitivity: 音量敏感度 (0.5-3.0)，值越大对小音量越敏感
     
     返回:
     - 频谱特征矩阵 (n_bands, n_frames)
@@ -57,8 +58,19 @@ def extract_audio_features(y, sr, n_bands=64, hop_length=512):
     # 转换为对数刻度
     log_mel = librosa.power_to_db(mel_spectrogram, ref=np.max)
     
+    # 使用固定动态范围归一化，更准确反映音量变化
+    # 设定合理的dB范围：-60dB到0dB
+    db_min = -60.0  # 最小音量阈值
+    db_max = 0.0    # 最大音量阈值
+    
+    # 将dB值限制在合理范围内
+    log_mel_clipped = np.clip(log_mel, db_min, db_max)
+    
     # 归一化到 0-1 范围
-    normalized = (log_mel - log_mel.min()) / (log_mel.max() - log_mel.min())
+    normalized = (log_mel_clipped - db_min) / (db_max - db_min)
+    
+    # 添加音量敏感度调整
+    normalized = np.power(normalized, 1.0 / sensitivity)
     
     return normalized
 
@@ -312,16 +324,17 @@ def generate_energy_bar_video(audio_path, output_video_path, style_params, progr
         if duration_sec == 0:
             progress_callback(f"音频文件 {os.path.basename(audio_path)} 时长为0，跳过。")
             return
-            
+
         progress_callback(f"  音频加载完成 ({duration_sec:.1f}秒), 耗时: {time.time() - start_time:.1f}秒")
         
         # 2. 提取音频特征
         start_time = time.time()
         fps = style_params.get('fps', 25)  # 降低FPS提升速度
         n_bands = style_params.get('n_bands', 64)
+        sensitivity = style_params.get('sensitivity', 1.5)  # 获取敏感度设置
         hop_length = int(sr * (1.0 / fps))  # 确保帧数匹配
         
-        features = extract_audio_features(y, sr, n_bands=n_bands, hop_length=hop_length)
+        features = extract_audio_features(y, sr, n_bands=n_bands, hop_length=hop_length, sensitivity=sensitivity)
         total_frames = features.shape[1]
         
         progress_callback(f"  特征提取完成 ({total_frames}帧), 耗时: {time.time() - start_time:.1f}秒")
@@ -368,11 +381,11 @@ def generate_energy_bar_video(audio_path, output_video_path, style_params, progr
         # 7. 合并音频
         progress_callback(f"  正在合并音频...")
         start_time = time.time()
-        
+
         output_dir = os.path.dirname(output_video_path)
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-        
+
         # 使用ffmpeg合并音视频
         cmd = [
             'ffmpeg', '-y',  # 覆盖输出文件
@@ -400,7 +413,7 @@ def generate_energy_bar_video(audio_path, output_video_path, style_params, progr
         merge_time = time.time() - start_time
         progress_callback(f"  音频合并完成, 耗时: {merge_time:.1f}秒")
         progress_callback(f"成功创建: {output_video_path}")
-        
+
     except Exception as e:
         progress_callback(f"处理 {os.path.basename(audio_path)} 时发生错误: {e}")
     finally:
@@ -573,11 +586,21 @@ class WaveformApp:
         self.height_var = tk.IntVar(value=720)
         tk.Entry(settings_frame, textvariable=self.height_var, width=8).grid(row=1, column=3, padx=5, pady=2, sticky="w")
 
+        # 第三行：音量敏感度
+        tk.Label(settings_frame, text="音量敏感度:").grid(row=2, column=0, padx=5, pady=2, sticky="w")
+        self.sensitivity_var = tk.DoubleVar(value=1.5)
+        sensitivity_scale = tk.Scale(settings_frame, from_=0.5, to=3.0, resolution=0.1, 
+                                   variable=self.sensitivity_var, orient="horizontal", length=100)
+        sensitivity_scale.grid(row=2, column=1, padx=5, pady=2, sticky="w")
+        
+        tk.Label(settings_frame, text="(0.5=不敏感, 1.5=默认, 3.0=高敏感)", fg="gray", font=("Arial", 8)).grid(row=2, column=2, columnspan=2, padx=5, pady=2, sticky="w")
+
         # 性能优化提示
         tips_frame = ttk.LabelFrame(main_frame, text="新功能与优化提示", padding=(10, 5))
         tips_frame.pack(fill="x", pady=(0, 10))
         
-        tips_text = """✨ 新功能: 8种能量条样式 + 自定义取色器
+        tips_text = """✨ 新功能: 8种能量条样式 + 自定义取色器 + 音量敏感度调节
+• 音量敏感度: 调节对小音量的响应程度，解决安静段落能量条过高的问题
 • 尖峰摇滚: 三角形设计，适合重金属音乐
 • 脉冲呼吸: 动态缩放效果，有生命力
 • 霓虹发光: 边框发光效果，夜店风格
@@ -724,6 +747,7 @@ class WaveformApp:
                 "n_bands": self.n_bands_var.get(),
                 "width": self.width_var.get(),
                 "height": self.height_var.get(),
+                "sensitivity": self.sensitivity_var.get(),  # 添加敏感度参数
                 "background_color": self.current_bg_color.copy(),
                 "bar_color": self.current_bar_color.copy(),
                 "highlight_color": self.current_highlight_color.copy()
