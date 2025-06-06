@@ -1,5 +1,4 @@
-librosa
-numpy
-matplotlib
-ffmpeg-python
-Pillow
+opencv-python>=4.0.0
+librosa>=0.10.0
+scipy>=1.10.0
+numpy>=1.20.0
