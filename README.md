@@ -1,273 +1,207 @@
-# 音频能量条视频生成器 v2.1 🎵🎬
+# Waveform Generator
 
-一个高性能的音频可视化工具，可以将音频文件转换为炫酷的能量条式可视化视频。
+Turn music into Cyber/CRT energy-bar videos.
 
-## 主要特性 ✨
+Waveform Generator is a small Python desktop and CLI tool for creating MP4 audio visualizers. It is built for creators who want fast, audio-reactive visuals without opening a full video editor, and for developers who want a hackable rendering script they can automate.
 
-- **🚀 高性能**: 相比原版本提升 5-10 倍速度
-- **🎨 8种专业样式**: 从经典矩形到霓虹发光，覆盖各种音乐风格
-- **🌈 自定义取色器**: 背景、能量条、高亮色独立选择
-- **📊 专业可视化**: 基于频谱分析的能量条效果
-- **⚙️ 灵活配置**: 可调整FPS、能量条数量、视频尺寸
-- **📝 详细日志**: 实时显示处理进度和性能统计
+## Highlights
 
-## 效果展示 🎪
+- GUI mode for quick creative work.
+- CLI mode for repeatable batch rendering.
+- 11 visual presets, including new Cyber/CRT styles.
+- MP4 output with the original audio track merged in.
+- Custom background, bar, and highlight colors.
+- Adjustable FPS, bar count, video size, and audio sensitivity.
+- No new runtime dependency beyond the existing Python stack and FFmpeg.
 
-### 8种能量条样式
+## Cyber/CRT Presets
 
-| 样式名称 | 视觉特点 | 适用场景 | 技术特色 |
-|----------|----------|----------|----------|
-| 经典矩形 | 传统矩形条 | 电子音乐、技术演示 | 性能最佳，经典可靠 |
-| 圆角现代 | 圆角矩形 | 流行音乐、现代风格 | 现代感十足，视觉柔和 |
-| 圆点科技 | 圆形点状堆叠 | 科幻音乐、技术展示 | 科技感强烈，渐变效果 |
-| 尖峰摇滚 | 三角形尖峰 | 摇滚、重金属音乐 | 冲击力强，边缘高亮 |
-| 对称双向 | 中心向上下扩展 | 古典音乐、对称美学 | 对称设计，平衡感强 |
-| 瀑布渐变 | 垂直渐变效果 | 环境音乐、氛围音乐 | 重力感，多层渐变 |
-| 脉冲呼吸 | 动态缩放动画 | 人声音乐、有机感 | 2秒周期，生命活力 |
-| 霓虹发光 | 多层边框发光 | 电音舞曲、夜店风格 | 边框发光，霓虹效果 |
+| Preset | Look | Best For |
+| --- | --- | --- |
+| CRT Oscilloscope | Green signal bars, dark grid, CRT scanlines | Retro monitor and hardware synth vibes |
+| Cyber Grid | Neon bars over a perspective grid | Futuristic clips, DJ visuals, social video |
+| Signal Glitch | Jittered bars, scanlines, short signal breaks | Glitch edits and high-energy tracks |
 
-### 取色器功能 🎨
+## Full Preset List
 
-- **背景色选择**: 完全自定义背景颜色
-- **能量条色选择**: 主要能量条颜色
-- **高亮色选择**: 渐变和特效颜色
-- **实时预览**: 选择后立即显示效果
-- **一键重置**: 恢复模板默认配色
+| Preset | Visual Style |
+| --- | --- |
+| Classic Rectangles | Fast traditional vertical bars |
+| Modern Rounded | Soft rounded bars |
+| Tech Dots | Stacked circular dots |
+| Rock Peaks | Sharp triangular peaks |
+| Symmetric Bars | Bars expand from the center line |
+| Waterfall Gradient | Layered vertical gradients |
+| Pulse Breathing | Periodic breathing motion |
+| Neon Glow | Bright layered neon outlines |
+| CRT Oscilloscope | CRT grid and scanline signal bars |
+| Cyber Grid | Neon perspective-grid visualizer |
+| Signal Glitch | Jittered signal-break visualizer |
 
-## 安装与运行 🛠️
+## Requirements
 
-### 系统要求
-- macOS / Windows / Linux
-- Python 3.8+
-- FFmpeg (必须)
+- Python 3.10-3.12 recommended
+- FFmpeg installed and available in your system `PATH`
+- macOS, Windows, or Linux
 
-### 1. 安装FFmpeg
-**macOS (使用Homebrew):**
+Install FFmpeg:
+
 ```bash
+# macOS
 brew install ffmpeg
-```
 
-**Windows:**
-1. 从 [FFmpeg官网](https://ffmpeg.org/download.html) 下载
-2. 解压到某个目录，如 `C:\ffmpeg`
-3. 将 `C:\ffmpeg\bin` 添加到系统PATH
-
-**Linux (Ubuntu/Debian):**
-```bash
+# Ubuntu / Debian
 sudo apt update
 sudo apt install ffmpeg
 ```
 
-### 2. 运行程序
+On Windows, download FFmpeg from [ffmpeg.org](https://ffmpeg.org/download.html), extract it, add the `bin` folder to `PATH`, then verify with:
 
-**方式一：使用虚拟环境（推荐）**
 ```bash
-# 创建虚拟环境
-python3 -m venv venv
-
-# 激活虚拟环境
-# macOS/Linux:
-source venv/bin/activate
-# Windows:
-# venv\Scripts\activate
-
-# 安装依赖
-pip install -r requirements.txt
-
-# 运行程序
-python generator.py
+ffmpeg -version
 ```
 
-**方式二：直接安装依赖**
+## Installation
+
 ```bash
-pip install opencv-python librosa scipy numpy
-python generator.py
-```
-
-## 使用指南 📖
-
-### 基本操作
-1. **选择音频文件夹**: 点击"浏览..."选择包含音频文件的文件夹
-2. **选择样式模板**: 从8种样式中选择合适的风格
-3. **自定义颜色**: 使用取色器调整背景色、能量条色、高亮色
-4. **调整参数**: 根据需要调整FPS、能量条数量、视频尺寸
-5. **开始生成**: 点击"🎵 开始生成能量条视频 🎬"
-
-### 支持的音频格式
-- WAV (.wav)
-- MP3 (.mp3)
-- FLAC (.flac)
-- AAC (.aac)
-- M4A (.m4a)
-- OGG (.ogg)
-
-### 样式选择指南 🎯
-
-#### 音乐类型推荐
-- **电子音乐**: 经典矩形、霓虹发光
-- **摇滚音乐**: 尖峰摇滚、瀑布渐变
-- **流行音乐**: 圆角现代、脉冲呼吸
-- **古典音乐**: 对称双向、瀑布渐变
-- **科幻音效**: 圆点科技、霓虹发光
-- **环境音乐**: 瀑布渐变、脉冲呼吸
-
-#### 视觉效果特点
-- **动画效果**: 脉冲呼吸（2秒周期动画）
-- **发光效果**: 霓虹发光（多层边框）
-- **渐变效果**: 瀑布渐变（垂直层次）
-- **几何美学**: 对称双向（中心对称）
-- **科技感**: 圆点科技（点状堆叠）
-
-### 颜色搭配建议 🌈
-
-#### 经典搭配
-- **深色背景 + 亮色能量条**: 突出能量条效果
-- **黑色背景 + 霓虹色**: 适合夜店、电音风格
-- **深蓝背景 + 青色能量条**: 科技感强烈
-
-#### 和谐搭配
-- **同色系不同明度**: 视觉和谐统一
-- **蓝色系**: 深蓝背景 + 浅蓝能量条 + 白色高亮
-- **绿色系**: 深绿背景 + 亮绿能量条 + 黄绿高亮
-
-#### 对比搭配
-- **互补色增强视觉冲击**: 红与绿、蓝与橙
-- **冷暖对比**: 冷色背景 + 暖色能量条
-
-### 性能优化建议 ⚡
-
-| 使用场景 | 推荐设置 | 预计速度 | 视觉质量 |
-|----------|----------|----------|----------|
-| **快速预览** | FPS=20, 条数=32, 720p | 最快 | 良好 |
-| **平衡模式** | FPS=25, 条数=64, 720p | 推荐 ⭐ | 优秀 |
-| **高质量** | FPS=30, 条数=128, 1080p | 较慢 | 最佳 |
-
-### 输出说明
-- 生成的视频文件保存在原音频文件夹的 `energy_bar_videos_output` 子文件夹中
-- 视频格式：MP4 (H.264 + AAC)
-- 文件命名：`原文件名_样式名_energy_bars.mp4`
-
-## 技术特点 🔧
-
-### 性能优化
-- **OpenCV渲染**: 替代matplotlib，速度提升5-10倍
-- **批量处理**: 减少I/O开销
-- **内存优化**: 避免存储完整视频帧
-- **智能参数**: 自动优化编码设置
-
-### 音频分析
-- **Mel频谱**: 使用人耳感知模型分析音频
-- **实时响应**: 能量条高度实时跟随音频变化
-- **频率分离**: 不同频段驱动不同能量条
-
-### 视觉效果技术
-- **多样式绘制**: 8种不同的绘制算法
-- **动画系统**: 基于时间的动态效果
-- **颜色系统**: HSV/RGB/BGR完整支持
-- **发光效果**: 多层边框模拟发光
-
-### 新增功能详解
-
-#### 取色器系统
-```python
-# 支持十六进制和BGR格式互转
-def hex_to_bgr(hex_color): ...
-def bgr_to_hex(bgr_color): ...
-
-# 实时颜色预览
-self.update_color_previews()
-```
-
-#### 样式绘制引擎
-```python
-# 模块化绘制函数
-draw_rectangle_bars()   # 经典矩形
-draw_rounded_bars()     # 圆角矩形
-draw_circle_bars()      # 圆形点状
-draw_triangle_bars()    # 三角形
-draw_pulse_bars()       # 脉冲动画
-draw_neon_bars()        # 霓虹效果
-```
-
-## 常见问题 ❓
-
-### Q: 程序提示"未检测到FFmpeg"
-A: 请确保已安装FFmpeg并添加到系统PATH。可以在终端运行 `ffmpeg -version` 验证。
-
-### Q: 如何选择合适的样式？
-A: 
-- 根据音乐风格选择：电子音乐用霓虹发光，摇滚用尖峰摇滚
-- 根据用途选择：专业展示用经典矩形，娱乐用脉冲呼吸
-- 根据性能需求：快速处理用经典矩形，高质量用复杂样式
-
-### Q: 颜色搭配有什么技巧？
-A:
-- 遵循色彩理论：互补色对比强烈，邻近色和谐统一
-- 考虑用途：夜店风格用霓虹色，商务用途用低饱和度色彩
-- 测试效果：使用实时预览查看搭配效果
-
-### Q: 处理大文件时速度很慢
-A: 尝试以下优化：
-- 降低FPS (20-25)
-- 减少能量条数量 (32-64)
-- 使用较小的视频尺寸 (720p)
-- 选择性能更好的样式（经典矩形最快）
-
-### Q: 某些样式效果不明显
-A: 
-- 调整能量条数量：复杂样式建议32-64条
-- 检查颜色对比度：确保能量条与背景有足够对比
-- 尝试不同音频：动态范围大的音乐效果更明显
-
-## 更新日志 📚
-
-### v2.1.0 (当前版本) - 🎨 自定义与样式升级
-- 🌈 新增完整的取色器系统（背景、能量条、高亮色）
-- 🎪 8种专业样式模板（从基础到动画效果）
-- 🖥️ 重新设计的模块化用户界面
-- 📱 实时颜色预览功能
-- 🔄 一键重置为模板默认配色
-- 📝 每个样式的详细描述和适用场景
-
-### v2.0.0 - 🚀 性能革命
-- 🎉 重构为能量条式可视化
-- 🚀 性能提升5-10倍
-- 🎨 4种预设样式模板
-- 📊 实时进度显示和性能统计
-- 🛠️ 使用OpenCV替代matplotlib
-
-### v1.0.0 - 📜 原始版本
-- 滚动波形可视化
-- 基于matplotlib渲染
-- 基础自定义选项
-
-## 贡献与反馈 🤝
-
-欢迎提交Issue或Pull Request来改进这个项目！
-
-### 开发环境搭建
-```bash
-git clone <repository>
+git clone https://github.com/glassesmonkey/waveform_generator.git
 cd waveform_generator
 python3 -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate
 pip install -r requirements.txt
+```
+
+On Windows:
+
+```bash
+venv\Scripts\activate
+```
+
+Python 3.13 is not recommended yet because the audio stack may try to compile `numba` and `llvmlite` from source on some systems.
+
+## GUI Usage
+
+```bash
 python generator.py
 ```
 
-### 参与贡献
-- 🐛 报告Bug或提出改进建议
-- 🎨 设计新的能量条样式
-- 🌍 翻译界面到其他语言
-- 📖 完善文档和教程
-- ⚡ 性能优化和代码改进
+1. Select a folder that contains audio files.
+2. Pick a visual preset.
+3. Adjust colors and render settings if needed.
+4. Click **Generate Energy Bar Videos**.
+5. Find the MP4 files in `energy_bar_videos_output`.
 
-## 许可证 📄
+Supported audio formats: `.wav`, `.mp3`, `.flac`, `.aac`, `.m4a`, `.ogg`.
 
-此项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
+## CLI Usage
 
----
+Render a folder with the default style:
 
-**享受创建炫酷音频可视化的乐趣！** 🎵✨
+```bash
+python generator.py --input ./audio
+```
 
-*从经典矩形到霓虹发光，从简单配色到专业定制，让每一首音乐都有属于它的视觉语言。* 
+Render with a Cyber/CRT preset:
+
+```bash
+python generator.py --input ./audio --style "CRT Oscilloscope"
+```
+
+Render a 1080p Cyber Grid batch:
+
+```bash
+python generator.py \
+  --input ./audio \
+  --style "Cyber Grid" \
+  --fps 30 \
+  --bars 96 \
+  --width 1920 \
+  --height 1080 \
+  --sensitivity 1.8
+```
+
+Write to a custom output folder:
+
+```bash
+python generator.py --input ./audio --output ./renders --style "Signal Glitch"
+```
+
+CLI options:
+
+| Option | Default | Notes |
+| --- | --- | --- |
+| `--input` | required in CLI mode | Folder containing audio files |
+| `--style` | `Classic Rectangles` | Must match one of the preset names |
+| `--output` | `energy_bar_videos_output` | Created automatically |
+| `--fps` | `25` | Valid range: 1-60 |
+| `--bars` | `64` | Valid range: 8-256 |
+| `--width` | `1280` | Valid range: 320-3840 |
+| `--height` | `720` | Valid range: 240-2160 |
+| `--sensitivity` | `1.5` | Valid range: 0.5-3.0 |
+
+## Recommended Settings
+
+| Goal | FPS | Bars | Size |
+| --- | ---: | ---: | --- |
+| Fast preview | 20 | 32 | 1280x720 |
+| Balanced render | 25 | 64 | 1280x720 |
+| High-detail render | 30 | 128 | 1920x1080 |
+
+Sensitivity controls how strongly quiet passages move the bars. Lower it when quiet sections look too active; raise it when quiet recordings barely move.
+
+## Output
+
+Generated videos are named like this:
+
+```text
+original-audio-name_style-name_energy_bars.mp4
+```
+
+Example:
+
+```text
+demo_crt_oscilloscope_energy_bars.mp4
+```
+
+## Troubleshooting
+
+### FFmpeg is missing
+
+Run `ffmpeg -version` in a terminal. If the command fails, install FFmpeg or fix your `PATH`.
+
+### Processing is slow
+
+Use `1280x720`, lower FPS to `20` or `25`, reduce bars to `32` or `64`, or use `Classic Rectangles` for the fastest renderer.
+
+### The bars barely move
+
+Increase sensitivity, try a track with stronger dynamics, or use a higher-contrast color palette.
+
+### CLI exits with an error
+
+Check that the input folder exists, contains supported audio files, uses a valid style name, and has valid render settings.
+
+## Development
+
+The project intentionally keeps the implementation in one Python file so new contributors can follow the full rendering path:
+
+1. Load audio with Librosa.
+2. Convert it into Mel-frequency energy bands.
+3. Render frames with OpenCV.
+4. Merge video and audio with FFmpeg.
+5. Save the final MP4.
+
+Useful checks:
+
+```bash
+python3 -m py_compile generator.py
+python3 generator.py --help
+```
+
+## Contributing
+
+Issues and pull requests are welcome. Good next contributions include preview media, packaged desktop builds, more visual presets, performance profiling, and UI translations.
+
+## License
+
+MIT License.

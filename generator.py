@@ -1,15 +1,186 @@
+import argparse
 import tkinter as tk
 from tkinter import filedialog, ttk, scrolledtext, messagebox, colorchooser
-import librosa
-import numpy as np
-import cv2
 import os
+import sys
 import tempfile
 import threading
 import subprocess
-from scipy import signal
 import time
 import math
+
+try:
+    import librosa
+    import numpy as np
+    import cv2
+    from scipy import signal
+    LIBRARY_IMPORT_ERROR = None
+except ImportError as exc:
+    librosa = None
+    np = None
+    cv2 = None
+    signal = None
+    LIBRARY_IMPORT_ERROR = exc
+
+AUDIO_EXTENSIONS = ('.wav', '.mp3', '.flac', '.aac', '.m4a', '.ogg')
+DEFAULT_STYLE_NAME = "Classic Rectangles"
+DEFAULT_SETTINGS = {
+    "fps": 25,
+    "n_bands": 64,
+    "width": 1280,
+    "height": 720,
+    "sensitivity": 1.5,
+}
+SETTING_LIMITS = {
+    "fps": (1, 60, "FPS"),
+    "n_bands": (8, 256, "Bar count"),
+    "width": (320, 3840, "Video width"),
+    "height": (240, 2160, "Video height"),
+    "sensitivity": (0.5, 3.0, "Sensitivity"),
+}
+
+STYLE_TEMPLATES = {
+    "Classic Rectangles": {
+        "bar_style": "rectangle",
+        "background_color": [0, 30, 0],
+        "bar_color": [0, 255, 0],
+        "gradient_effect": True,
+        "description": "Traditional rectangular bars; fast and reliable for electronic music."
+    },
+    "Modern Rounded": {
+        "bar_style": "rounded",
+        "background_color": [20, 20, 50],
+        "bar_color": [100, 150, 255],
+        "gradient_effect": True,
+        "description": "Rounded bars with a softer, modern visual style."
+    },
+    "Tech Dots": {
+        "bar_style": "circle",
+        "background_color": [30, 30, 30],
+        "bar_color": [0, 255, 255],
+        "gradient_effect": True,
+        "description": "Stacked dots for a futuristic, technical look."
+    },
+    "Rock Peaks": {
+        "bar_style": "triangle",
+        "background_color": [50, 0, 0],
+        "bar_color": [255, 100, 0],
+        "gradient_effect": True,
+        "description": "Sharp triangular peaks for rock and heavy music."
+    },
+    "Symmetric Bars": {
+        "bar_style": "symmetric",
+        "background_color": [20, 0, 40],
+        "bar_color": [255, 0, 255],
+        "gradient_effect": True,
+        "description": "Bars expand from the center line for a balanced composition."
+    },
+    "Waterfall Gradient": {
+        "bar_style": "waterfall",
+        "background_color": [0, 20, 50],
+        "bar_color": [0, 200, 255],
+        "gradient_effect": True,
+        "description": "Layered vertical gradients with a flowing feel."
+    },
+    "Pulse Breathing": {
+        "bar_style": "pulse",
+        "background_color": [40, 0, 40],
+        "bar_color": [255, 50, 150],
+        "gradient_effect": True,
+        "description": "A breathing pulse animation for vocals and organic tracks."
+    },
+    "Neon Glow": {
+        "bar_style": "neon",
+        "background_color": [0, 0, 0],
+        "bar_color": [0, 255, 0],
+        "gradient_effect": True,
+        "description": "Layered neon outlines for club and dance music."
+    },
+    "CRT Oscilloscope": {
+        "bar_style": "symmetric",
+        "background_color": [4, 12, 4],
+        "bar_color": [35, 255, 90],
+        "highlight_color": [180, 255, 210],
+        "gradient_effect": True,
+        "grid_effect": True,
+        "scanline_effect": True,
+        "grid_color": [18, 88, 34],
+        "description": "Black-grid CRT look with green oscilloscope energy bars."
+    },
+    "Cyber Grid": {
+        "bar_style": "neon",
+        "background_color": [20, 8, 28],
+        "bar_color": [255, 245, 40],
+        "highlight_color": [255, 55, 210],
+        "gradient_effect": True,
+        "grid_effect": True,
+        "perspective_grid": True,
+        "grid_color": [130, 80, 255],
+        "description": "Neon cyan and magenta bars over a retro-futuristic perspective grid."
+    },
+    "Signal Glitch": {
+        "bar_style": "rectangle",
+        "background_color": [10, 10, 18],
+        "bar_color": [245, 255, 60],
+        "highlight_color": [255, 45, 220],
+        "gradient_effect": True,
+        "scanline_effect": True,
+        "glitch_effect": True,
+        "description": "Audio bars with subtle horizontal jitter and signal-break artifacts."
+    },
+}
+
+
+def sanitize_filename_part(value):
+    """Return a filesystem-safe name fragment for generated video files."""
+    safe_chars = []
+    for char in value.lower().replace(" ", "_"):
+        if char.isalnum() or char in ("-", "_"):
+            safe_chars.append(char)
+    return "".join(safe_chars) or "style"
+
+
+def validate_generation_settings(settings):
+    """Return a list of human-readable validation errors for render settings."""
+    validation_errors = []
+    for key, (minimum, maximum, label) in SETTING_LIMITS.items():
+        value = settings[key]
+        if not minimum <= value <= maximum:
+            validation_errors.append(f"{label} must be between {minimum} and {maximum}.")
+    return validation_errors
+
+
+def get_audio_files(folder_path):
+    """List supported audio files in a folder in stable alphabetical order."""
+    return sorted(f for f in os.listdir(folder_path) if f.lower().endswith(AUDIO_EXTENSIONS))
+
+
+def build_style_params(style_name, settings, color_overrides=None):
+    """Merge a named visual preset with render settings and optional GUI colors."""
+    template = STYLE_TEMPLATES[style_name]
+    style_params = template.copy()
+    style_params.update({
+        "fps": settings["fps"],
+        "n_bands": settings["n_bands"],
+        "width": settings["width"],
+        "height": settings["height"],
+        "sensitivity": settings["sensitivity"],
+    })
+    if color_overrides:
+        style_params.update(color_overrides)
+    return style_params
+
+
+def get_missing_dependency_message():
+    """Explain missing Python dependencies without hiding the original import name."""
+    if LIBRARY_IMPORT_ERROR is None:
+        return None
+    missing_name = getattr(LIBRARY_IMPORT_ERROR, "name", None) or str(LIBRARY_IMPORT_ERROR)
+    return (
+        f"Missing or incompatible Python dependency: {missing_name}. "
+        "Install project dependencies with: pip install -r requirements.txt"
+    )
+
 
 # --- FFmpeg Check ---
 def check_ffmpeg_installed():
@@ -217,6 +388,55 @@ def draw_neon_bars(frame, x, y_start, y_end, x_end, bar_color, highlight_color, 
         cv2.rectangle(frame, (x + 1, y_start + 1), (x_end - 1, y_end - 1), 
                      [min(255, c + 50) for c in highlight_color], 1)
 
+
+def draw_grid_effect(frame, width, height, style_params):
+    """Draw a low-contrast grid that makes Cyber/CRT presets feel technical."""
+    grid_color = style_params.get('grid_color', [35, 70, 35])
+    if style_params.get('perspective_grid', False):
+        horizon_y = int(height * 0.58)
+        bottom_y = height - 1
+        center_x = width // 2
+
+        for offset in range(-width, width + 1, max(80, width // 12)):
+            cv2.line(frame, (center_x, horizon_y), (center_x + offset, bottom_y), grid_color, 1)
+
+        y = horizon_y
+        step = 14
+        while y < height:
+            cv2.line(frame, (0, y), (width, y), grid_color, 1)
+            step = int(step * 1.18) + 1
+            y += step
+        return
+
+    grid_step = max(32, width // 24)
+    for x in range(0, width, grid_step):
+        cv2.line(frame, (x, 0), (x, height), grid_color, 1)
+    for y in range(0, height, grid_step):
+        cv2.line(frame, (0, y), (width, y), grid_color, 1)
+
+
+def draw_scanline_effect(frame, height):
+    """Darken every few rows to mimic a CRT display."""
+    frame[0:height:4] = (frame[0:height:4] * 0.55).astype(np.uint8)
+
+
+def apply_glitch_effect(frame, frame_idx, style_params):
+    """Add deterministic horizontal slices so glitch renders are repeatable."""
+    height, width = frame.shape[:2]
+    if frame_idx % 11 not in (0, 1, 7):
+        return frame
+
+    rng = np.random.default_rng(frame_idx)
+    glitch_color = style_params.get('highlight_color', [255, 45, 220])
+    for _ in range(4):
+        y = int(rng.integers(0, max(1, height - 8)))
+        slice_height = int(rng.integers(2, max(3, height // 45)))
+        shift = int(rng.integers(-width // 30, width // 30 + 1))
+        frame[y:y + slice_height] = np.roll(frame[y:y + slice_height], shift, axis=1)
+        cv2.line(frame, (0, y), (width, y), glitch_color, 1)
+    return frame
+
+
 # --- 高性能视频生成 ---
 def create_energy_bar_frame(features, frame_idx, width, height, style_params):
     """
@@ -237,6 +457,9 @@ def create_energy_bar_frame(features, frame_idx, width, height, style_params):
     # 背景颜色
     bg_color = style_params.get('background_color', [0, 50, 0])
     frame[:] = bg_color
+
+    if style_params.get('grid_effect', False):
+        draw_grid_effect(frame, width, height, style_params)
     
     n_bands = features.shape[0]
     if frame_idx >= features.shape[1]:
@@ -261,6 +484,8 @@ def create_energy_bar_frame(features, frame_idx, width, height, style_params):
     for i, energy in enumerate(current_features):
         # 计算条的位置和高度
         x = i * (bar_width + spacing) + spacing
+        if style_params.get('glitch_effect', False) and frame_idx % 9 == 0:
+            x += int(math.sin(frame_idx * 0.73 + i * 1.9) * max(1, spacing))
         bar_height = int(energy * max_bar_height)
         
         if bar_height > 0:
@@ -301,6 +526,11 @@ def create_energy_bar_frame(features, frame_idx, width, height, style_params):
                 elif bar_style == 'neon':
                     draw_neon_bars(frame, x, y_start, y_end, x_end, bar_color, highlight_color, style_params)
     
+    if style_params.get('scanline_effect', False):
+        draw_scanline_effect(frame, height)
+    if style_params.get('glitch_effect', False):
+        frame = apply_glitch_effect(frame, frame_idx, style_params)
+
     return frame
 
 def generate_energy_bar_video(audio_path, output_video_path, style_params, progress_callback):
@@ -314,7 +544,7 @@ def generate_energy_bar_video(audio_path, output_video_path, style_params, progr
     4. 优化内存使用
     """
     try:
-        progress_callback(f"开始处理: {os.path.basename(audio_path)}")
+        progress_callback(f"Starting: {os.path.basename(audio_path)}")
         
         # 1. 加载音频
         start_time = time.time()
@@ -322,10 +552,10 @@ def generate_energy_bar_video(audio_path, output_video_path, style_params, progr
         duration_sec = librosa.get_duration(y=y, sr=sr)
         
         if duration_sec == 0:
-            progress_callback(f"音频文件 {os.path.basename(audio_path)} 时长为0，跳过。")
-            return
+            progress_callback(f"Audio file {os.path.basename(audio_path)} has zero duration; skipping.")
+            return False
 
-        progress_callback(f"  音频加载完成 ({duration_sec:.1f}秒), 耗时: {time.time() - start_time:.1f}秒")
+        progress_callback(f"  Audio loaded ({duration_sec:.1f}s) in {time.time() - start_time:.1f}s.")
         
         # 2. 提取音频特征
         start_time = time.time()
@@ -337,23 +567,24 @@ def generate_energy_bar_video(audio_path, output_video_path, style_params, progr
         features = extract_audio_features(y, sr, n_bands=n_bands, hop_length=hop_length, sensitivity=sensitivity)
         total_frames = features.shape[1]
         
-        progress_callback(f"  特征提取完成 ({total_frames}帧), 耗时: {time.time() - start_time:.1f}秒")
+        progress_callback(f"  Audio features extracted ({total_frames} frames) in {time.time() - start_time:.1f}s.")
         
         # 3. 视频参数
         width = style_params.get('width', 1280)
         height = style_params.get('height', 720)
         
         # 4. 创建临时视频文件
-        temp_video = tempfile.NamedTemporaryFile(suffix='.mp4', delete=False).name
+        temp_fd, temp_video = tempfile.mkstemp(suffix='.avi')
+        os.close(temp_fd)
         
         # 5. 初始化OpenCV视频写入器
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        fourcc = cv2.VideoWriter_fourcc(*'MJPG')
         out = cv2.VideoWriter(temp_video, fourcc, fps, (width, height))
         
         if not out.isOpened():
-            raise Exception("无法创建视频写入器")
+            raise Exception("Could not create the temporary video writer.")
         
-        progress_callback(f"  开始生成视频帧...")
+        progress_callback("  Rendering video frames...")
         start_time = time.time()
         
         # 6. 批量生成帧
@@ -371,15 +602,15 @@ def generate_energy_bar_video(audio_path, output_video_path, style_params, progr
             if batch_start % (batch_size * 5) == 0:  # 每500帧报告一次
                 elapsed = time.time() - start_time
                 eta = elapsed * (total_frames - batch_end) / batch_end if batch_end > 0 else 0
-                progress_callback(f"  视频生成进度: {progress:.1f}% (预计剩余: {eta:.1f}秒)")
+                progress_callback(f"  Render progress: {progress:.1f}% (ETA: {eta:.1f}s)")
         
         out.release()
         
         generation_time = time.time() - start_time
-        progress_callback(f"  视频帧生成完成, 耗时: {generation_time:.1f}秒")
+        progress_callback(f"  Video frames rendered in {generation_time:.1f}s.")
         
         # 7. 合并音频
-        progress_callback(f"  正在合并音频...")
+        progress_callback("  Merging audio with video...")
         start_time = time.time()
 
         output_dir = os.path.dirname(output_video_path)
@@ -408,91 +639,95 @@ def generate_energy_bar_video(audio_path, output_video_path, style_params, progr
         result = subprocess.run(cmd, capture_output=True, text=True, startupinfo=startupinfo)
         
         if result.returncode != 0:
-            raise Exception(f"FFmpeg错误: {result.stderr}")
+            raise Exception(f"FFmpeg error: {result.stderr}")
         
         merge_time = time.time() - start_time
-        progress_callback(f"  音频合并完成, 耗时: {merge_time:.1f}秒")
-        progress_callback(f"成功创建: {output_video_path}")
+        progress_callback(f"  Audio merged in {merge_time:.1f}s.")
+        progress_callback(f"Created: {output_video_path}")
+        return True
 
     except Exception as e:
-        progress_callback(f"处理 {os.path.basename(audio_path)} 时发生错误: {e}")
+        progress_callback(f"Error while processing {os.path.basename(audio_path)}: {e}")
+        return False
     finally:
         # 清理临时文件
         if 'temp_video' in locals() and os.path.exists(temp_video):
             try:
                 os.remove(temp_video)
             except PermissionError:
-                progress_callback(f"无法立即删除临时文件: {temp_video}。可以稍后手动删除。")
+                progress_callback(f"Could not delete temporary file right away: {temp_video}. You can remove it manually later.")
+
+
+def process_audio_folder(folder_path, output_folder, selected_template, settings, color_overrides, progress_callback, should_continue=None):
+    """Render every supported audio file in a folder and return processing counts."""
+    audio_files = get_audio_files(folder_path)
+    if not audio_files:
+        progress_callback("No supported audio files were found in the selected folder.")
+        return {"found": 0, "created": 0, "failed": 0}
+
+    os.makedirs(output_folder, exist_ok=True)
+
+    style_params = build_style_params(selected_template, settings, color_overrides)
+    template = STYLE_TEMPLATES[selected_template]
+
+    progress_callback(f"Found {len(audio_files)} audio file(s).")
+    progress_callback(f"Using style: {selected_template} ({template['description']})")
+    progress_callback(f"Video settings: {style_params['width']}x{style_params['height']} @ {style_params['fps']} FPS, {style_params['n_bands']} bars")
+    progress_callback(f"Renderer: {style_params['bar_style']}")
+    progress_callback("")
+
+    total_start_time = time.time()
+    created_count = 0
+    failed_count = 0
+
+    for i, audio_file_name in enumerate(audio_files, 1):
+        if should_continue and not should_continue():
+            progress_callback("Processing stopped before the remaining files were rendered.")
+            break
+
+        progress_callback(f"[{i}/{len(audio_files)}] Processing file: {audio_file_name}")
+
+        full_audio_path = os.path.join(folder_path, audio_file_name)
+        base_name, _ = os.path.splitext(audio_file_name)
+        output_video_name = f"{base_name}_{sanitize_filename_part(selected_template)}_energy_bars.mp4"
+        output_video_path = os.path.join(output_folder, output_video_name)
+
+        file_start_time = time.time()
+        created = generate_energy_bar_video(full_audio_path, output_video_path, style_params, progress_callback)
+        file_time = time.time() - file_start_time
+
+        if created:
+            created_count += 1
+        else:
+            failed_count += 1
+        progress_callback(f"  File finished in {file_time:.1f} seconds.")
+        progress_callback("")
+
+    total_time = time.time() - total_start_time
+    progress_callback("=" * 80)
+    progress_callback(f"All files finished in {total_time:.1f} seconds.")
+    progress_callback(f"Output folder: {output_folder}")
+    progress_callback(f"Created: {created_count}; Failed or skipped: {failed_count}")
+    progress_callback("=" * 80)
+
+    return {"found": len(audio_files), "created": created_count, "failed": failed_count}
+
 
 # --- GUI Application ---
 class WaveformApp:
     def __init__(self, root):
         self.root = root
-        root.title("音频能量条视频生成器 v2.1")
+        self.ui_thread = threading.current_thread()
+        root.title("Audio Energy Bar Video Generator v2.2")
         root.geometry("900x800")
 
         if not check_ffmpeg_installed():
-            messagebox.showerror("FFmpeg 错误", "未检测到 FFmpeg 或其未在系统 PATH 中。请安装 FFmpeg 并确保其在 PATH 中。")
+            messagebox.showerror("FFmpeg Error", "FFmpeg was not found in your system PATH. Please install FFmpeg before generating videos.")
+        dependency_message = get_missing_dependency_message()
+        if dependency_message:
+            messagebox.showerror("Missing Dependency", dependency_message)
 
-        # 预定义的样式模板（包含完整配置）
-        self.style_templates = {
-            "经典矩形": {
-                "bar_style": "rectangle",
-                "background_color": [0, 30, 0],
-                "bar_color": [0, 255, 0],
-                "gradient_effect": True,
-                "description": "传统的矩形能量条，适合电子音乐"
-            },
-            "圆角现代": {
-                "bar_style": "rounded",
-                "background_color": [20, 20, 50],
-                "bar_color": [100, 150, 255],
-                "gradient_effect": True,
-                "description": "圆角矩形，现代感十足"
-            },
-            "圆点科技": {
-                "bar_style": "circle",
-                "background_color": [30, 30, 30],
-                "bar_color": [0, 255, 255],
-                "gradient_effect": True,
-                "description": "圆形点状，科技感强烈"
-            },
-            "尖峰摇滚": {
-                "bar_style": "triangle",
-                "background_color": [50, 0, 0],
-                "bar_color": [255, 100, 0],
-                "gradient_effect": True,
-                "description": "三角形尖峰，适合摇滚音乐"
-            },
-            "对称双向": {
-                "bar_style": "symmetric",
-                "background_color": [20, 0, 40],
-                "bar_color": [255, 0, 255],
-                "gradient_effect": True,
-                "description": "从中心向上下扩展，对称美感"
-            },
-            "瀑布渐变": {
-                "bar_style": "waterfall",
-                "background_color": [0, 20, 50],
-                "bar_color": [0, 200, 255],
-                "gradient_effect": True,
-                "description": "瀑布式渐变效果，动感十足"
-            },
-            "脉冲呼吸": {
-                "bar_style": "pulse",
-                "background_color": [40, 0, 40],
-                "bar_color": [255, 50, 150],
-                "gradient_effect": True,
-                "description": "脉冲呼吸效果，有生命力"
-            },
-            "霓虹发光": {
-                "bar_style": "neon",
-                "background_color": [0, 0, 0],
-                "bar_color": [0, 255, 0],
-                "gradient_effect": True,
-                "description": "霓虹边框发光，夜店风格"
-            }
-        }
+        self.style_templates = STYLE_TEMPLATES
 
         # 当前选择的颜色
         self.current_bg_color = [0, 30, 0]
@@ -508,21 +743,21 @@ class WaveformApp:
         main_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
         # 文件选择区域
-        file_frame = ttk.LabelFrame(main_frame, text="文件选择", padding=(10, 5))
+        file_frame = ttk.LabelFrame(main_frame, text="Audio Source", padding=(10, 5))
         file_frame.pack(fill="x", pady=(0, 10))
         
-        tk.Label(file_frame, text="选择音频文件夹:", font=("Arial", 10, "bold")).grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        tk.Label(file_frame, text="Audio folder:", font=("Arial", 10, "bold")).grid(row=0, column=0, padx=5, pady=5, sticky="w")
         self.folder_path_var = tk.StringVar()
         self.folder_entry = tk.Entry(file_frame, textvariable=self.folder_path_var, width=60)
         self.folder_entry.grid(row=0, column=1, padx=5, pady=5, sticky="ew")
-        tk.Button(file_frame, text="浏览...", command=self.select_folder).grid(row=0, column=2, padx=5, pady=5)
+        tk.Button(file_frame, text="Browse...", command=self.select_folder).grid(row=0, column=2, padx=5, pady=5)
         file_frame.grid_columnconfigure(1, weight=1)
 
         # 样式选择区域
-        style_frame = ttk.LabelFrame(main_frame, text="样式模板", padding=(10, 5))
+        style_frame = ttk.LabelFrame(main_frame, text="Visual Style", padding=(10, 5))
         style_frame.pack(fill="x", pady=(0, 10))
         
-        tk.Label(style_frame, text="选择样式模板:", font=("Arial", 10, "bold")).grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        tk.Label(style_frame, text="Style preset:", font=("Arial", 10, "bold")).grid(row=0, column=0, padx=5, pady=5, sticky="w")
         self.template_var = tk.StringVar(value=list(self.style_templates.keys())[0])
         template_menu = ttk.Combobox(style_frame, textvariable=self.template_var, 
                                    values=list(self.style_templates.keys()), state="readonly", width=25)
@@ -534,87 +769,88 @@ class WaveformApp:
         self.style_desc_label.grid(row=0, column=2, padx=(20, 5), pady=5, sticky="w")
 
         # 颜色自定义区域
-        color_frame = ttk.LabelFrame(main_frame, text="颜色自定义", padding=(10, 5))
+        color_frame = ttk.LabelFrame(main_frame, text="Colors", padding=(10, 5))
         color_frame.pack(fill="x", pady=(0, 10))
         
         # 背景色
-        tk.Label(color_frame, text="背景颜色:", font=("Arial", 9, "bold")).grid(row=0, column=0, padx=5, pady=5, sticky="w")
-        self.bg_color_button = tk.Button(color_frame, text="选择背景色", width=12, height=2,
+        tk.Label(color_frame, text="Background:", font=("Arial", 9, "bold")).grid(row=0, column=0, padx=5, pady=5, sticky="w")
+        self.bg_color_button = tk.Button(color_frame, text="Choose", width=12, height=2,
                                         command=self.choose_bg_color)
         self.bg_color_button.grid(row=0, column=1, padx=5, pady=5)
-        self.bg_color_preview = tk.Label(color_frame, text="预览", width=10, height=2, relief="sunken")
+        self.bg_color_preview = tk.Label(color_frame, text="Preview", width=10, height=2, relief="sunken")
         self.bg_color_preview.grid(row=0, column=2, padx=5, pady=5)
         
         # 能量条主色
-        tk.Label(color_frame, text="能量条颜色:", font=("Arial", 9, "bold")).grid(row=1, column=0, padx=5, pady=5, sticky="w")
-        self.bar_color_button = tk.Button(color_frame, text="选择条颜色", width=12, height=2,
+        tk.Label(color_frame, text="Bar color:", font=("Arial", 9, "bold")).grid(row=1, column=0, padx=5, pady=5, sticky="w")
+        self.bar_color_button = tk.Button(color_frame, text="Choose", width=12, height=2,
                                          command=self.choose_bar_color)
         self.bar_color_button.grid(row=1, column=1, padx=5, pady=5)
-        self.bar_color_preview = tk.Label(color_frame, text="预览", width=10, height=2, relief="sunken")
+        self.bar_color_preview = tk.Label(color_frame, text="Preview", width=10, height=2, relief="sunken")
         self.bar_color_preview.grid(row=1, column=2, padx=5, pady=5)
         
         # 高亮色
-        tk.Label(color_frame, text="高亮颜色:", font=("Arial", 9, "bold")).grid(row=2, column=0, padx=5, pady=5, sticky="w")
-        self.highlight_color_button = tk.Button(color_frame, text="选择高亮色", width=12, height=2,
+        tk.Label(color_frame, text="Highlight:", font=("Arial", 9, "bold")).grid(row=2, column=0, padx=5, pady=5, sticky="w")
+        self.highlight_color_button = tk.Button(color_frame, text="Choose", width=12, height=2,
                                                command=self.choose_highlight_color)
         self.highlight_color_button.grid(row=2, column=1, padx=5, pady=5)
-        self.highlight_color_preview = tk.Label(color_frame, text="预览", width=10, height=2, relief="sunken")
+        self.highlight_color_preview = tk.Label(color_frame, text="Preview", width=10, height=2, relief="sunken")
         self.highlight_color_preview.grid(row=2, column=2, padx=5, pady=5)
         
         # 重置颜色按钮
-        tk.Button(color_frame, text="重置为模板颜色", command=self.reset_colors).grid(row=3, column=1, padx=5, pady=5)
+        tk.Button(color_frame, text="Reset preset colors", command=self.reset_colors).grid(row=3, column=1, padx=5, pady=5)
 
         # 视频设置区域
-        settings_frame = ttk.LabelFrame(main_frame, text="视频设置", padding=(10, 5))
+        settings_frame = ttk.LabelFrame(main_frame, text="Video Settings", padding=(10, 5))
         settings_frame.pack(fill="x", pady=(0, 10))
         
         # 第一行：FPS和能量条数量
-        tk.Label(settings_frame, text="帧率 (FPS):").grid(row=0, column=0, padx=5, pady=2, sticky="w")
+        tk.Label(settings_frame, text="Frame rate (FPS):").grid(row=0, column=0, padx=5, pady=2, sticky="w")
         self.fps_var = tk.IntVar(value=25)
         tk.Entry(settings_frame, textvariable=self.fps_var, width=8).grid(row=0, column=1, padx=5, pady=2, sticky="w")
         
-        tk.Label(settings_frame, text="能量条数量:").grid(row=0, column=2, padx=(20,5), pady=2, sticky="w")
+        tk.Label(settings_frame, text="Bar count:").grid(row=0, column=2, padx=(20,5), pady=2, sticky="w")
         self.n_bands_var = tk.IntVar(value=64)
         tk.Entry(settings_frame, textvariable=self.n_bands_var, width=8).grid(row=0, column=3, padx=5, pady=2, sticky="w")
         
         # 第二行：视频尺寸
-        tk.Label(settings_frame, text="视频宽度:").grid(row=1, column=0, padx=5, pady=2, sticky="w")
+        tk.Label(settings_frame, text="Video width:").grid(row=1, column=0, padx=5, pady=2, sticky="w")
         self.width_var = tk.IntVar(value=1280)
         tk.Entry(settings_frame, textvariable=self.width_var, width=8).grid(row=1, column=1, padx=5, pady=2, sticky="w")
         
-        tk.Label(settings_frame, text="视频高度:").grid(row=1, column=2, padx=(20,5), pady=2, sticky="w")
+        tk.Label(settings_frame, text="Video height:").grid(row=1, column=2, padx=(20,5), pady=2, sticky="w")
         self.height_var = tk.IntVar(value=720)
         tk.Entry(settings_frame, textvariable=self.height_var, width=8).grid(row=1, column=3, padx=5, pady=2, sticky="w")
 
         # 第三行：音量敏感度
-        tk.Label(settings_frame, text="音量敏感度:").grid(row=2, column=0, padx=5, pady=2, sticky="w")
+        tk.Label(settings_frame, text="Sensitivity:").grid(row=2, column=0, padx=5, pady=2, sticky="w")
         self.sensitivity_var = tk.DoubleVar(value=1.5)
         sensitivity_scale = tk.Scale(settings_frame, from_=0.5, to=3.0, resolution=0.1, 
                                    variable=self.sensitivity_var, orient="horizontal", length=100)
         sensitivity_scale.grid(row=2, column=1, padx=5, pady=2, sticky="w")
         
-        tk.Label(settings_frame, text="(0.5=不敏感, 1.5=默认, 3.0=高敏感)", fg="gray", font=("Arial", 8)).grid(row=2, column=2, columnspan=2, padx=5, pady=2, sticky="w")
+        tk.Label(settings_frame, text="0.5 = lower response, 1.5 = default, 3.0 = higher response", fg="gray", font=("Arial", 8)).grid(row=2, column=2, columnspan=2, padx=5, pady=2, sticky="w")
 
         # 性能优化提示
-        tips_frame = ttk.LabelFrame(main_frame, text="新功能与优化提示", padding=(10, 5))
+        tips_frame = ttk.LabelFrame(main_frame, text="Tips", padding=(10, 5))
         tips_frame.pack(fill="x", pady=(0, 10))
         
-        tips_text = """✨ 新功能: 8种能量条样式 + 自定义取色器 + 音量敏感度调节
-• 音量敏感度: 调节对小音量的响应程度，解决安静段落能量条过高的问题
-• 尖峰摇滚: 三角形设计，适合重金属音乐
-• 脉冲呼吸: 动态缩放效果，有生命力
-• 霓虹发光: 边框发光效果，夜店风格
-• 性能提示: 较小的视频尺寸处理更快（720p比1080p快约40%）"""
+        tips_text = """Features: 11 bar styles, Cyber/CRT effects, custom colors, and sensitivity control
+• Sensitivity controls how strongly quiet passages move the bars.
+• CRT Oscilloscope adds grid lines and scanlines for an old monitor look.
+• Cyber Grid adds a neon perspective floor for retro-futuristic clips.
+• Signal Glitch adds subtle jitter and signal-break artifacts.
+• Rock Peaks uses triangular bars for heavier tracks.
+• Performance tip: 720p renders much faster than 1080p."""
         
         tk.Label(tips_frame, text=tips_text, justify="left", fg="blue", font=("Arial", 9)).pack(anchor="w")
 
         # 开始处理按钮
-        self.start_button = tk.Button(main_frame, text="🎵 开始生成能量条视频 🎬", command=self.start_processing, 
+        self.start_button = tk.Button(main_frame, text="Generate Energy Bar Videos", command=self.start_processing, 
                                     bg="lightblue", width=30, height=2, font=("Arial", 12, "bold"))
         self.start_button.pack(pady=15)
 
         # 日志区域
-        tk.Label(main_frame, text="处理日志:", font=("Arial", 10, "bold")).pack(anchor="w", padx=5)
+        tk.Label(main_frame, text="Processing log:", font=("Arial", 10, "bold")).pack(anchor="w", padx=5)
         self.log_area = scrolledtext.ScrolledText(main_frame, width=100, height=15, wrap=tk.WORD, state=tk.DISABLED)
         self.log_area.pack(fill="both", expand=True, padx=5, pady=5)
 
@@ -625,7 +861,7 @@ class WaveformApp:
     def choose_bg_color(self):
         """选择背景颜色"""
         current_hex = bgr_to_hex(self.current_bg_color)
-        color = colorchooser.askcolor(color=current_hex, title="选择背景颜色")
+        color = colorchooser.askcolor(color=current_hex, title="Choose background color")
         if color[1]:  # 如果用户选择了颜色
             self.current_bg_color = hex_to_bgr(color[1])
             self.update_color_previews()
@@ -633,7 +869,7 @@ class WaveformApp:
     def choose_bar_color(self):
         """选择能量条颜色"""
         current_hex = bgr_to_hex(self.current_bar_color)
-        color = colorchooser.askcolor(color=current_hex, title="选择能量条颜色")
+        color = colorchooser.askcolor(color=current_hex, title="Choose bar color")
         if color[1]:
             self.current_bar_color = hex_to_bgr(color[1])
             # 自动更新高亮色
@@ -643,7 +879,7 @@ class WaveformApp:
     def choose_highlight_color(self):
         """选择高亮颜色"""
         current_hex = bgr_to_hex(self.current_highlight_color)
-        color = colorchooser.askcolor(color=current_hex, title="选择高亮颜色")
+        color = colorchooser.askcolor(color=current_hex, title="Choose highlight color")
         if color[1]:
             self.current_highlight_color = hex_to_bgr(color[1])
             self.update_color_previews()
@@ -687,6 +923,11 @@ class WaveformApp:
 
     def log_message(self, message):
         """在日志区域添加消息"""
+        if threading.current_thread() is not self.ui_thread:
+            if self.root.winfo_exists():
+                self.root.after(0, self.log_message, message)
+            return
+
         if self.root.winfo_exists():
             self.log_area.configure(state=tk.NORMAL)
             self.log_area.insert(tk.END, message + "\n")
@@ -699,100 +940,175 @@ class WaveformApp:
         folder_selected = filedialog.askdirectory()
         if folder_selected:
             self.folder_path_var.set(folder_selected)
-            self.log_message(f"已选择文件夹: {folder_selected}")
+            self.log_message(f"Selected folder: {folder_selected}")
+
+    def get_validated_settings(self):
+        """Read and validate UI settings before starting slow video work."""
+        try:
+            fps = self.fps_var.get()
+            n_bands = self.n_bands_var.get()
+            width = self.width_var.get()
+            height = self.height_var.get()
+            sensitivity = self.sensitivity_var.get()
+        except tk.TclError:
+            messagebox.showerror("Invalid Settings", "FPS, bar count, width, height, and sensitivity must be numbers.")
+            return None
+
+        validation_errors = validate_generation_settings({
+            "fps": fps,
+            "n_bands": n_bands,
+            "width": width,
+            "height": height,
+            "sensitivity": sensitivity,
+        })
+
+        if validation_errors:
+            messagebox.showerror("Invalid Settings", "\n".join(validation_errors))
+            return None
+
+        return {
+            "fps": fps,
+            "n_bands": n_bands,
+            "width": width,
+            "height": height,
+            "sensitivity": sensitivity,
+            "selected_template": self.template_var.get(),
+            "background_color": self.current_bg_color.copy(),
+            "bar_color": self.current_bar_color.copy(),
+            "highlight_color": self.current_highlight_color.copy(),
+        }
 
     def start_processing(self):
         """开始处理音频文件"""
         folder = self.folder_path_var.get()
         if not folder or not os.path.isdir(folder):
-            messagebox.showerror("错误", "请选择一个有效的文件夹。")
+            messagebox.showerror("Invalid Folder", "Please choose a valid folder that contains audio files.")
             return
 
         if not check_ffmpeg_installed():
-            messagebox.showerror("FFmpeg 错误", "未检测到 FFmpeg。请确保已安装并配置在系统 PATH。")
+            messagebox.showerror("FFmpeg Error", "FFmpeg was not found. Please install it and make sure it is available in your system PATH.")
             return
 
-        self.start_button.config(state=tk.DISABLED, text="正在处理...")
+        dependency_message = get_missing_dependency_message()
+        if dependency_message:
+            messagebox.showerror("Missing Dependency", dependency_message)
+            return
+
+        settings = self.get_validated_settings()
+        if settings is None:
+            return
+
+        self.start_button.config(state=tk.DISABLED, text="Processing...")
         self.log_message("=" * 80)
-        self.log_message("🎵 开始批量处理任务...")
+        self.log_message("Starting batch processing...")
         self.log_message("=" * 80)
 
         # 在后台线程中处理
-        thread = threading.Thread(target=self._process_folder_thread, args=(folder,), daemon=True)
+        thread = threading.Thread(target=self._process_folder_thread, args=(folder, settings), daemon=True)
         thread.start()
 
-    def _process_folder_thread(self, folder_path):
+    def _process_folder_thread(self, folder_path, settings):
         """后台线程处理文件夹中的音频文件"""
         try:
-            # 支持的音频格式
-            audio_extensions = ('.wav', '.mp3', '.flac', '.aac', '.m4a', '.ogg')
-            audio_files = [f for f in os.listdir(folder_path) if f.lower().endswith(audio_extensions)]
-
-            if not audio_files:
-                self.log_message("在选定文件夹中未找到支持的音频文件。")
-                return
-
-            # 创建输出文件夹
             output_base_folder = os.path.join(folder_path, "energy_bar_videos_output")
-            os.makedirs(output_base_folder, exist_ok=True)
-
-            # 获取样式参数
-            selected_template = self.template_var.get()
-            template = self.style_templates[selected_template]
-            
-            # 合并模板和用户自定义设置
-            style_params = template.copy()
-            style_params.update({
-                "fps": self.fps_var.get(),
-                "n_bands": self.n_bands_var.get(),
-                "width": self.width_var.get(),
-                "height": self.height_var.get(),
-                "sensitivity": self.sensitivity_var.get(),  # 添加敏感度参数
-                "background_color": self.current_bg_color.copy(),
-                "bar_color": self.current_bar_color.copy(),
-                "highlight_color": self.current_highlight_color.copy()
-            })
-
-            self.log_message(f"找到 {len(audio_files)} 个音频文件")
-            self.log_message(f"使用样式模板: {selected_template} ({template['description']})")
-            self.log_message(f"视频设置: {style_params['width']}x{style_params['height']}@{style_params['fps']}fps, {style_params['n_bands']}条")
-            self.log_message(f"样式类型: {style_params['bar_style']}")
-            self.log_message("")
-
-            # 处理每个音频文件
-            total_start_time = time.time()
-            for i, audio_file_name in enumerate(audio_files, 1):
-                if not self.root.winfo_exists():
-                    self.log_message("GUI已关闭，处理中止。")
-                    break
-                
-                self.log_message(f"[{i}/{len(audio_files)}] 处理文件: {audio_file_name}")
-                
-                full_audio_path = os.path.join(folder_path, audio_file_name)
-                base_name, _ = os.path.splitext(audio_file_name)
-                output_video_name = f"{base_name}_{selected_template}_energy_bars.mp4"
-                output_video_path = os.path.join(output_base_folder, output_video_name)
-
-                file_start_time = time.time()
-                generate_energy_bar_video(full_audio_path, output_video_path, style_params, self.log_message)
-                file_time = time.time() - file_start_time
-                
-                self.log_message(f"  文件处理完成，耗时: {file_time:.1f}秒")
-                self.log_message("")
-            
-            total_time = time.time() - total_start_time
-            self.log_message("=" * 80)
-            self.log_message(f"🎉 所有文件处理完毕！总耗时: {total_time:.1f}秒")
-            self.log_message(f"📁 输出文件夹: {output_base_folder}")
-            self.log_message("=" * 80)
+            color_overrides = {
+                "background_color": settings["background_color"],
+                "bar_color": settings["bar_color"],
+                "highlight_color": settings["highlight_color"],
+            }
+            process_audio_folder(
+                folder_path,
+                output_base_folder,
+                settings["selected_template"],
+                settings,
+                color_overrides,
+                self.log_message,
+                should_continue=self.root.winfo_exists,
+            )
 
         except Exception as e:
-            self.log_message(f"❌ 处理过程中发生严重错误: {e}")
+            self.log_message(f"A serious error occurred while processing: {e}")
         finally:
             if self.root.winfo_exists():
-                self.start_button.config(state=tk.NORMAL, text="🎵 开始生成能量条视频 🎬")
+                self.root.after(0, self.start_button.config, {"state": tk.NORMAL, "text": "Generate Energy Bar Videos"})
 
-if __name__ == "__main__":
+
+def create_cli_parser():
+    """Build the command-line interface without changing the default GUI launch."""
+    parser = argparse.ArgumentParser(
+        description="Generate Cyber/CRT audio energy-bar videos from a folder of audio files."
+    )
+    parser.add_argument("--input", dest="input_folder", required=True, help="Folder containing audio files.")
+    parser.add_argument("--style", default=DEFAULT_STYLE_NAME, choices=list(STYLE_TEMPLATES.keys()), help="Visual preset to render.")
+    parser.add_argument("--output", help="Output folder. Defaults to energy_bar_videos_output inside the input folder.")
+    parser.add_argument("--fps", type=int, default=DEFAULT_SETTINGS["fps"], help="Video frame rate, 1-60.")
+    parser.add_argument("--bars", dest="n_bands", type=int, default=DEFAULT_SETTINGS["n_bands"], help="Number of energy bars, 8-256.")
+    parser.add_argument("--width", type=int, default=DEFAULT_SETTINGS["width"], help="Video width in pixels, 320-3840.")
+    parser.add_argument("--height", type=int, default=DEFAULT_SETTINGS["height"], help="Video height in pixels, 240-2160.")
+    parser.add_argument("--sensitivity", type=float, default=DEFAULT_SETTINGS["sensitivity"], help="Audio sensitivity, 0.5-3.0.")
+    return parser
+
+
+def run_cli(argv):
+    """Run batch rendering from the terminal and return a process exit code."""
+    parser = create_cli_parser()
+    args = parser.parse_args(argv)
+
+    input_folder = os.path.abspath(args.input_folder)
+    if not os.path.isdir(input_folder):
+        parser.error(f"input folder does not exist: {input_folder}")
+
+    dependency_message = get_missing_dependency_message()
+    if dependency_message:
+        print(f"Error: {dependency_message}", file=sys.stderr)
+        return 1
+
+    if not check_ffmpeg_installed():
+        print("Error: FFmpeg was not found in your system PATH.", file=sys.stderr)
+        return 1
+
+    settings = {
+        "fps": args.fps,
+        "n_bands": args.n_bands,
+        "width": args.width,
+        "height": args.height,
+        "sensitivity": args.sensitivity,
+    }
+    validation_errors = validate_generation_settings(settings)
+    if validation_errors:
+        parser.error("\n".join(validation_errors))
+
+    output_folder = os.path.abspath(args.output) if args.output else os.path.join(input_folder, "energy_bar_videos_output")
+
+    result = process_audio_folder(
+        input_folder,
+        output_folder,
+        args.style,
+        settings,
+        color_overrides=None,
+        progress_callback=print,
+    )
+
+    if result["found"] == 0 or result["failed"] > 0:
+        return 1
+    return 0
+
+
+def run_gui():
+    """Start the original Tkinter desktop app."""
     main_root = tk.Tk()
     app = WaveformApp(main_root)
     main_root.mainloop()
+    return 0
+
+
+def main(argv=None):
+    """Use CLI mode when arguments are provided; otherwise open the GUI."""
+    argv = sys.argv[1:] if argv is None else argv
+    if argv:
+        return run_cli(argv)
+    return run_gui()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

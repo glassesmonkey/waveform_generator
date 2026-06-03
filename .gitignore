@@ -1,2 +1,5 @@
 /venv/
 venv/
+__pycache__/
+*.pyc
+energy_bar_videos_output/
